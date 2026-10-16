@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ККСО Раннер</title>
+<style>
+:root{color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html,body{margin:0;height:100%;background:#12161f;color:#f2f2f2;font-family:"Courier New",monospace;-webkit-user-select:none;user-select:none;touch-action:none;overflow:hidden}
+#w{padding:6px 8px}
+#hud{display:flex;justify-content:space-between;font-size:18px;font-weight:bold;padding:2px 2px 6px}
+#hud b{color:#ffd23f}
+#box{position:relative;margin:0 auto}
+canvas{box-sizing:border-box;display:block;image-rendering:pixelated;border:3px solid #2e3a52;background:#6ec6ff}
+#ov{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0008;text-align:center;gap:10px}
+#ov h1{margin:0;font-size:22px;color:#7dff6b}
+button{font:bold 20px "Courier New",monospace;padding:10px 26px;background:#3ea84a;color:#fff;border:3px solid #1d5a26;cursor:pointer}
+button:active{transform:translateY(2px)}
+#lb{margin-top:10px;font-size:15px;color:#b8c2d6}
+#lb div{display:flex;justify-content:space-between;max-width:320px}
+#nm{font:16px "Courier New",monospace;padding:4px;width:130px;background:#1c2332;color:#fff;border:2px solid #2e3a52}
+.s{font-size:13px;color:#9aa6bd}
+</style></head><body>
+<div id="w">
+<div id="hud"><span>Очки: <b id="sc">0</b></span><span>Рекорд: <b id="hi">0</b></span></div>
+<div id="box"><canvas id="c" width="240" height="427"></canvas>
+<div id="ov"><h1 id="t">ККСО: СТРОЙОТРЯД</h1><div id="m">Тап — прыжок, держи дольше — выше.<br>Перепрыгивай стройку: мешки, кирпичи,<br>тачки, бетономешалки. Бежим всё быстрее!</div><button id="b">Старт</button></div></div>
+</div>
+<script>
+const cv=document.getElementById('c'),g=cv.getContext('2d');g.imageSmoothingEnabled=false;
+const $=i=>document.getElementById(i);
+const GY=330,W=240,H=427,DT=1000/60;
+let st='idle',p={x:56,y:GY-24,vy:0,g:true},obs=[],coins=[],parts=[],spd=2.8,dist=0,cn=0,score=0,hi=0,nextO=260,tm=0,acc=0,last=0,buf=0,clouds=[];
+try{hi=+localStorage.getItem('kkso_hi')||0}catch(e){}
+$('hi').textContent=hi;
+for(let i=0;i<6;i++)clouds.push({x:Math.random()*W,y:20+Math.random()*190});
+function reset(){p={x:56,y:GY-24,vy:0,g:true};obs=[];coins=[];parts=[];spd=2.8;dist=0;cn=0;score=0;nextO=260;buf=0;st='run';$('ov').style.display='none';$('sc').textContent=0}
+function dust(n){for(let i=0;i<n;i++)parts.push({x:p.x+4+Math.random()*6,y:GY-2,vx:-Math.random()*1.5,vy:-Math.random()*1.2,l:14})}
+function doJump(){p.vy=-10.2;p.g=false;buf=0;dust(4)}
+function press(){if(st!=='run')return;if(p.g)doJump();else buf=8}
+function release(){if(st==='run'&&p.vy<-5)p.vy=-5}
+addEventListener('keydown',e=>{if((e.code==='Space'||e.code==='ArrowUp')&&!e.repeat){e.preventDefault();press()}});
+addEventListener('keyup',e=>{if(e.code==='Space'||e.code==='ArrowUp')release()});
+cv.addEventListener('pointerdown',e=>{e.preventDefault();press()});
+addEventListener('pointerup',release);addEventListener('pointercancel',release);
+$('b').onclick=reset;
+// ---- препятствия стройотряда ----
+const T=[
+{w:22,h:16,d:(x,y)=>{R(x,y+3,22,13,'#d8d2c0');R(x+2,y,6,4,'#d8d2c0');R(x+14,y,6,4,'#d8d2c0');R(x,y+13,22,3,'#b9b29b');R(x+5,y+6,12,4,'#3b6ea8')}}, // мешок цемента
+{w:12,h:18,d:(x,y)=>{R(x+4,y,4,5,'#ff7a1a');R(x+3,y+5,6,5,'#ff7a1a');R(x+1,y+10,10,5,'#ff7a1a');R(x,y+15,12,3,'#333');R(x+3,y+4,6,2,'#fff');R(x+2,y+10,8,2,'#fff')}}, // конус
+{w:26,h:22,d:(x,y)=>{R(x,y,26,22,'#c4562e');for(let r=0;r<3;r++){R(x,y+r*7+6,26,1,'#e6d6bd');for(let c=(r%2?6:12);c<26;c+=12)R(x+c,y+r*7,1,7,'#e6d6bd')}}}, // кирпичи
+{w:36,h:20,d:(x,y)=>{R(x+9,y,16,3,'#c4562e');R(x+6,y+2,26,8,'#f2b705');R(x+6,y+8,26,2,'#c48f00');R(x,y+8,10,2,'#6b4a2b');R(x+8,y+10,2,10,'#555');R(x+28,y+9,9,9,'#222');R(x+30,y+11,5,5,'#888')}}, // тачка
+{w:18,h:28,d:(x,y)=>{R(x,y,18,28,'#2d6fb5');R(x,y+4,18,2,'#1a4a80');R(x,y+13,18,2,'#1a4a80');R(x,y+22,18,2,'#1a4a80');R(x+3,y+1,2,26,'#5b97d4')}}, // бочка
+{w:26,h:34,d:(x,y)=>{R(x,y+26,26,8,'#d9b86a');R(x+4,y+21,18,6,'#d9b86a');R(x+12,y,2,24,'#8a5a2b');R(x+9,y,8,2,'#8a5a2b');R(x+9,y+19,9,8,'#9aa6b5')}}, // лопата в песке
+{w:32,h:38,d:(x,y)=>{R(x+4,y+30,3,8,'#444');R(x+25,y+30,3,8,'#444');R(x+3,y+8,26,22,'#f08a1d');R(x+3,y+17,26,3,'#c46a0f');R(x+7,y+3,18,6,'#f08a1d');R(x+10,y+3,12,3,'#333');R(x+14,y+23,4,4,'#333')}} // бетономешалка
+];
+function add(t,x){obs.push({t,x,y:GY-t.h,w:t.w,h:t.h})}
+function spawn(){
+  const t=T[Math.random()*Math.min(T.length,3+(dist/900|0))|0],x0=W+20;let x1=x0+t.w,mh=t.h;add(t,x0);
+  if(spd>4.5&&Math.random()<.3){const t2=T[Math.random()*3|0],x2=x0+t.w+18+Math.random()*10;add(t2,x2);x1=x2+t2.w;mh=Math.max(mh,t2.h)}
+  if(Math.random()<.8){const n=3+(Math.random()*3|0);for(let i=0;i<n;i++){const a=Math.sin(i/(n-1)*Math.PI);coins.push({x:x0+(x1-x0)*i/(n-1)-4,y:GY-mh-28-a*26})}}
+  nextO=120+Math.random()*100+spd*34+(x1-x0);
+}
+function hit(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y}
+function die(){
+  st='over';
+  if(score>hi){hi=score;$('hi').textContent=hi;try{localStorage.setItem('kkso_hi',hi)}catch(e){}$('t').textContent='НОВЫЙ РЕКОРД!'}else $('t').textContent='ИГРА ОКОНЧЕНА';
+  $('m').innerHTML='Очки: <b style="color:#ffd23f">'+score+'</b>';$('b').textContent='Еще раз';$('ov').style.display='flex';
+}
+function R(x,y,w,h,c){g.fillStyle=c;g.fillRect(Math.round(x),Math.round(y),w,h)}
+function drawPlayer(d,k){
+  const x=p.x,py=p.g?p.y:Math.min(p.y+p.vy*k,GY-24),air=!p.g,ph=d/9,s=Math.sin(ph),c=Math.cos(ph);
+  const y=py+(!air&&Math.abs(s)>.75?1:0);
+  R(x+1,GY,Math.max(6,14-Math.min(8,(GY-24-py)/9)),2,'rgba(0,0,0,.25)');
+  // ноги
+  if(air){R(x+3,y+18,4,4,'#2a3550');R(x+9,y+17,4,5,'#2a3550');R(x+2,y+21,5,2,'#111');R(x+9,y+21,5,2,'#111')}
+  else{const a=Math.round(s*3),la=c>.4?2:0,lb=c<-.4?2:0;
+    R(x+4+a,y+18,4,6-la,'#2a3550');R(x+4+a,y+22-la,5,2,'#111');
+    R(x+9-a,y+18,4,6-lb,'#2a3550');R(x+9-a,y+22-lb,5,2,'#111')}
+  // куртка бойцовки
+  R(x+1,y+9,14,9,'#3e9a3e');R(x+1,y+9,14,2,'#2f7d32');R(x+6,y+11,4,5,'#e8f5e0');R(x+7,y+12,2,3,'#3e9a3e');
+  // руки
+  if(air){R(x-1,y+(p.vy<0?5:9),3,6,'#3e9a3e');R(x+14,y+(p.vy<0?5:9),3,6,'#3e9a3e')}
+  else{const a=Math.round(s*2);R(x-1-a,y+10,3,6,'#3e9a3e');R(x+14+a,y+10,3,6,'#3e9a3e')}
+  // голова
+  R(x+3,y,10,3,'#2f7d32');R(x+11,y+2,4,1,'#2f7d32');R(x+3,y+3,10,6,'#f2c9a0');R(x+10,y+4,2,2,'#222');
+}
+function draw(){
+  const k=st==='run'?acc/DT:0,d=dist+spd*k;
+  R(0,0,W,GY,'#6ec6ff');R(0,GY-120,W,120,'#8fd5ff');R(0,GY-50,W,50,'#b4e2ff');
+  R(190,34,22,22,'#fff3a0');R(193,31,16,28,'#fff3a0');
+  clouds.forEach(c=>{R(c.x,c.y,36,8,'#fff');R(c.x+8,c.y-6,20,6,'#fff')});
+  // дальний план: панельные дома
+  for(let i=0;i<8;i++){const bw=40+(i*13%16),bh=70+(i*37%60),x=((i*64-d*.12)%512+512)%512-70;
+    R(x,GY-bh,bw,bh,i%2?'#8fa9c4':'#9bb2c9');
+    for(let wy=GY-bh+8;wy<GY-14;wy+=14)for(let wx=x+5;wx<x+bw-8;wx+=11)R(wx,wy,5,7,'#c9dff0')}
+  // башенный кран
+  {const x=((260-d*.22)%720+720)%720-120;R(x,GY-190,5,190,'#e8b21c');for(let y=GY-186;y<GY;y+=14)R(x,y,5,2,'#a67d0c');
+   R(x-50,GY-190,125,4,'#e8b21c');R(x-54,GY-186,12,9,'#555');R(x-4,GY-200,13,10,'#e8b21c');R(x+58,GY-186,1,50,'#333');R(x+55,GY-137,7,5,'#333')}
+  // забор стройки
+  for(let i=0;i<14;i++){const x=((i*20-d*.6)%280+280)%280-20;R(x,GY-26,16,26,'#c99a5b');R(x+15,GY-26,2,26,'#8a5a2b');R(x,GY-18,16,2,'#8a5a2b')}
+  R(0,GY-30,W,4,'#e8b21c');for(let i=0;i<10;i++){const x=((i*28-d*.6)%280+280)%280-20;R(x,GY-30,12,4,'#222')}
+  // земля
+  R(0,GY,W,H-GY,'#8a5a2b');R(0,GY,W,6,'#4cc24c');
+  for(let i=0;i<30;i++){const x=((i*37-d)%560+560)%560-40;R(x,GY+14+(i%6)*16,10,4,'#6d4520')}
+  coins.forEach(c=>{const cx=c.x-spd*k,w=Math.abs(Math.sin(tm/10+c.x/20))*8+2;R(cx+4-w/2,c.y+Math.sin(tm/12+c.x)*2,w,10,'#ffd23f');R(cx+4-w/2,c.y+Math.sin(tm/12+c.x)*2,w,2,'#fff3a0')});
+  obs.forEach(o=>o.t.d(Math.round(o.x-spd*k),o.y));
+  parts.forEach(q=>R(q.x,q.y,2,2,'rgba(240,230,200,'+(q.l/18)+')'));
+  drawPlayer(d,k);
+}
+function step(){
+  tm++;clouds.forEach(c=>{c.x-=.2;if(c.x<-40)c.x=W+10});
+  parts.forEach(q=>{q.x+=q.vx-(st==='run'?spd*.5:0);q.y+=q.vy;q.l--});parts=parts.filter(q=>q.l>0);
+  if(st!=='run')return;
+  spd=Math.min(2.8+dist/800,10.5);dist+=spd;
+  p.vy+=.55;p.y+=p.vy;
+  if(p.y>=GY-24){if(!p.g)dust(5);p.y=GY-24;p.vy=0;p.g=true;if(buf>0)doJump()}
+  if(buf>0)buf--;
+  if(p.g&&tm%5===0)dust(1);
+  nextO-=spd;if(nextO<=0)spawn();
+  obs.forEach(o=>o.x-=spd);coins.forEach(c=>c.x-=spd);
+  obs=obs.filter(o=>o.x>-60);coins=coins.filter(c=>c.x>-20);
+  const pb={x:p.x+3,y:p.y+2,w:10,h:21};
+  for(const o of obs)if(hit(pb,{x:o.x+3,y:o.y+3,w:o.w-6,h:o.h-3})){die();return}
+  coins=coins.filter(c=>{if(hit(pb,{x:c.x,y:c.y,w:10,h:10})){cn++;return false}return true});
+  score=Math.floor(dist/10)+cn*10;$('sc').textContent=score;
+}
+function loop(t){acc+=Math.min(t-last,100);last=t;while(acc>=DT){step();acc-=DT}draw();requestAnimationFrame(loop)}
+function fit(){const h=$('hud').offsetHeight+14;const k=Math.min((innerWidth-16)/W,(innerHeight-h)/H);const w=Math.floor(W*k),hh=Math.floor(H*k);cv.style.width=w+'px';cv.style.height=hh+'px';$('box').style.width=w+'px'}
+addEventListener('resize',fit);fit();requestAnimationFrame(loop);
+</script></body></html>
